@@ -92,7 +92,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
                         marginLeft: 4,
                     }}
                 >
-                    {post.body} {postLiked ? "yes" : "no"}
+                    {post.body} {postLiked ? "yes liked" : "not liked"}
                 </Text>
             </View>
             {post.attachments.length > 0 ? (

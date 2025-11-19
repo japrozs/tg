@@ -8,6 +8,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    ActivityIndicator,
 } from "react-native";
 import { colors } from "../../ui/theme";
 import { MainStackNav } from "./main-nav";
@@ -31,15 +32,24 @@ import { useMeQuery } from "../../generated/graphql";
 import Lucide from "@react-native-vector-icons/lucide";
 import * as ImagePicker from "expo-image-picker";
 import MediaPreviewRow from "../../components/media-preview-row";
+import axios from "axios";
+import { useApolloClient } from "@apollo/client";
 
 interface CreateModalProps {
     bottomSheetRef: React.RefObject<BottomSheetModal | null>;
+    onPostCreated?: () => void;
 }
 
-export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
+export const CreateModal: React.FC<CreateModalProps> = ({
+    bottomSheetRef,
+    onPostCreated,
+}) => {
     const { data, loading } = useMeQuery();
     const [body, setBody] = useState("");
     const [media, setMedia] = useState<ImagePicker.ImagePickerAsset[]>([]);
+    const [submitLoading, setSubmitLoading] = useState(false);
+    const client = useApolloClient();
+
     const onChangeBody = useCallback((t: string) => {
         setBody(t);
     }, []);
@@ -61,15 +71,15 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.All,
             allowsMultipleSelection: true,
-            selectionLimit: 10, // iOS only, Android allows unlimited so we'll enforce manually
+            selectionLimit: 10,
             quality: 1,
-            videoMaxDuration: 60, // optional
+            videoMaxDuration: 60,
         });
 
         if (!result.canceled) {
             setMedia((prev) => {
                 const combined = [...prev, ...result.assets];
-                return combined.slice(0, 10); // enforce max 10 across platforms
+                return combined.slice(0, 10);
             });
         }
     };
@@ -85,6 +95,65 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
                 const combined = [...prev, ...result.assets];
                 return combined.slice(0, 10);
             });
+        }
+    };
+
+    const createPost = async () => {
+        if (body.length === 0) return;
+
+        setSubmitLoading(true);
+
+        try {
+            const formData = new FormData();
+            formData.append("body", body);
+
+            // Add all media files to FormData
+            media.forEach((item, index) => {
+                const fileExtension = item.uri.split(".").pop();
+                const mimeType =
+                    item.type === "video"
+                        ? `video/${fileExtension}`
+                        : `image/${fileExtension}`;
+
+                formData.append("files", {
+                    uri: item.uri,
+                    type: mimeType,
+                    name: `media_${index}.${fileExtension}`,
+                } as any);
+            });
+
+            const response = await axios.post(
+                `${process.env.EXPO_PUBLIC_API_URL}/upload/post`,
+                formData,
+                {
+                    headers: {
+                        "Content-Type": "multipart/form-data",
+                    },
+                    withCredentials: true,
+                }
+            );
+
+            if (response.data.message) {
+                // Handle error
+                console.error("Error creating post:", response.data.message);
+                // You can add a toast/alert here
+            } else {
+                // Success - reset form and close modal
+                setBody("");
+                setMedia([]);
+                await client.resetStore();
+                bottomSheetRef.current?.dismiss();
+
+                // Call callback if provided
+                if (onPostCreated) {
+                    onPostCreated();
+                }
+            }
+        } catch (error) {
+            console.error("Error creating post:", error);
+            // You can add error handling/toast here
+        } finally {
+            setSubmitLoading(false);
         }
     };
 
@@ -126,9 +195,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
                             paddingHorizontal: 13,
                         }}
                     >
-                        {/* TODO: RECONSIDER if we want to keep this cross icon
-                              because we already have the modal handle bar
-                    */}
                         <View style={{ flex: 1 }}>
                             <Ionicons
                                 name="close-outline"
@@ -170,7 +236,11 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
                         >
                             <Image
                                 source={{
-                                    uri: "https://pbs.twimg.com/media/FlJwVcJXoAMvWHW.jpg",
+                                    uri:
+                                        // data?.me?.avatar
+                                        //     ? `${process.env.EXPO_PUBLIC_API_URL}/${data.me.avatar}`
+                                        //     : "https://pbs.twimg.com/media/FlJwVcJXoAMvWHW.jpg",
+                                        "https://pbs.twimg.com/media/FlJwVcJXoAMvWHW.jpg",
                                 }}
                                 style={{
                                     width: 45,
@@ -215,6 +285,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
                                     autoComplete="off"
                                     spellCheck={true}
                                     textBreakStrategy="highQuality"
+                                    editable={!submitLoading}
                                     style={{
                                         marginTop: 1,
                                         marginBottom: 8,
@@ -242,35 +313,70 @@ export const CreateModal: React.FC<CreateModalProps> = ({ bottomSheetRef }) => {
                                     <Lucide
                                         name="image"
                                         size={22}
-                                        color={layout.colors.redColor}
-                                        onPress={pickMedia}
+                                        color={
+                                            submitLoading
+                                                ? "#555"
+                                                : layout.colors.redColor
+                                        }
+                                        onPress={
+                                            submitLoading
+                                                ? undefined
+                                                : pickMedia
+                                        }
                                     />
                                     <Feather
                                         name="camera"
                                         size={21}
-                                        color={layout.colors.redColor}
-                                        onPress={takePhoto}
+                                        color={
+                                            submitLoading
+                                                ? "#555"
+                                                : layout.colors.redColor
+                                        }
+                                        onPress={
+                                            submitLoading
+                                                ? undefined
+                                                : takePhoto
+                                        }
                                     />
                                     <TouchableOpacity
                                         style={{
                                             backgroundColor:
-                                                layout.colors.redColor,
+                                                body.length === 0 ||
+                                                submitLoading
+                                                    ? "#555"
+                                                    : layout.colors.redColor,
                                             marginLeft: "auto",
                                             marginRight: 25,
                                             paddingVertical: 8,
                                             paddingHorizontal: 16,
                                             borderRadius: 20,
+                                            opacity:
+                                                body.length === 0 ||
+                                                submitLoading
+                                                    ? 0.6
+                                                    : 1,
                                         }}
+                                        disabled={
+                                            body.length === 0 || submitLoading
+                                        }
+                                        onPress={createPost}
                                     >
-                                        <Text
-                                            style={{
-                                                color: "white",
-                                                fontWeight: "600",
-                                                fontSize: 15,
-                                            }}
-                                        >
-                                            Post
-                                        </Text>
+                                        {submitLoading ? (
+                                            <ActivityIndicator
+                                                color="white"
+                                                size="small"
+                                            />
+                                        ) : (
+                                            <Text
+                                                style={{
+                                                    color: "white",
+                                                    fontWeight: "600",
+                                                    fontSize: 15,
+                                                }}
+                                            >
+                                                Post
+                                            </Text>
+                                        )}
                                     </TouchableOpacity>
                                 </View>
                             </View>
