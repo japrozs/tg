@@ -1,16 +1,18 @@
 import React from "react";
-import {
-    View,
-    Image,
-    TouchableOpacity,
-    StyleSheet,
-    ScrollView,
-    Text,
-} from "react-native";
+import { View, Image, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { layout } from "../constants";
+import DraggableFlatList, {
+    RenderItemParams,
+} from "react-native-draggable-flatlist";
+import * as Haptics from "expo-haptics";
+import Animated, {
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
+} from "react-native-reanimated";
 
 interface MediaPreviewRowProps {
     media: ImagePicker.ImagePickerAsset[];
@@ -29,63 +31,125 @@ const MediaPreviewRow: React.FC<MediaPreviewRowProps> = ({
         setMedia((prev) => prev.filter((_, i) => i !== index));
     };
 
-    return (
-        <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.container}
-            contentContainerStyle={styles.contentContainer}
-        >
-            {/* Add more button - only show if under 10 items */}
-            {media.length < 10 && onAddMore && (
+    const formatDuration = (durationInMilliseconds: number) => {
+        const durationInSeconds = Math.floor(durationInMilliseconds / 1000);
+
+        if (durationInSeconds < 60) {
+            return `${durationInSeconds}s`;
+        }
+        const minutes = Math.floor(durationInSeconds / 60);
+        const seconds = durationInSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    };
+
+    const renderItem = ({
+        item,
+        drag,
+        isActive,
+        getIndex,
+    }: RenderItemParams<ImagePicker.ImagePickerAsset>) => {
+        const index = getIndex();
+
+        const animatedStyle = useAnimatedStyle(() => {
+            return {
+                transform: [
+                    {
+                        scale: withSpring(isActive ? 1.08 : 1, {
+                            damping: 20,
+                            stiffness: 200,
+                            mass: 0.5,
+                        }),
+                    },
+                ],
+                opacity: withTiming(isActive ? 0.9 : 1, {
+                    duration: 150,
+                }),
+            };
+        });
+
+        return (
+            <Animated.View style={[styles.mediaItem, animatedStyle]}>
                 <TouchableOpacity
-                    style={styles.addMoreButton}
-                    onPress={onAddMore}
-                    activeOpacity={0.7}
+                    onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        drag();
+                    }}
+                    delayLongPress={300}
+                    disabled={isActive}
+                    activeOpacity={1}
+                    style={{ flex: 1 }}
                 >
-                    <Ionicons
-                        name="add-circle-outline"
-                        size={40}
-                        color={layout.colors.redColor}
-                    />
-                </TouchableOpacity>
-            )}
-            {media.map((item, index) => (
-                <View key={index} style={styles.mediaItem}>
-                    <Image
-                        source={{ uri: item.uri }}
-                        style={styles.thumbnail}
-                        resizeMode="cover"
-                    />
-                    {/* Video indicator */}
-                    {item.type === "video" && (
-                        <View style={styles.videoIndicator}>
-                            <Ionicons
-                                name="play-circle"
-                                size={32}
-                                color="white"
-                            />
-                        </View>
+                    {item.type === "video" ? (
+                        <Video
+                            source={{ uri: item.uri }}
+                            style={styles.thumbnail}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay
+                            isLooping
+                            isMuted
+                        />
+                    ) : (
+                        <Image
+                            source={{ uri: item.uri }}
+                            style={styles.thumbnail}
+                            resizeMode="cover"
+                        />
                     )}
                     {/* Duration for videos */}
                     {item.type === "video" && item.duration && (
                         <View style={styles.durationBadge}>
                             <Text style={styles.durationText}>
-                                {Math.floor(item.duration)}s
+                                {formatDuration(item.duration)}
                             </Text>
                         </View>
                     )}
                     {/* Remove button */}
                     <TouchableOpacity
                         style={styles.removeButton}
-                        onPress={() => removeMedia(index)}
+                        onPress={() =>
+                            index !== undefined && removeMedia(index)
+                        }
                         activeOpacity={0.7}
                     >
-                        <Ionicons name="close-circle" size={24} color="white" />
+                        <Ionicons
+                            name="close"
+                            size={18}
+                            color={layout.colors.redColor}
+                        />
                     </TouchableOpacity>
-                </View>
-            ))}
-        </ScrollView>
+                </TouchableOpacity>
+            </Animated.View>
+        );
+    };
+
+    return (
+        <View style={styles.container}>
+            <DraggableFlatList
+                data={media}
+                onDragEnd={({ data }) => setMedia(data)}
+                keyExtractor={(item, index) => `${item.uri}-${index}`}
+                renderItem={renderItem}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.contentContainer}
+                keyboardShouldPersistTaps="handled"
+                ListHeaderComponent={
+                    media.length < 10 && onAddMore ? (
+                        <TouchableOpacity
+                            style={styles.addMoreButton}
+                            onPress={onAddMore}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons
+                                name="add-circle-outline"
+                                size={40}
+                                color={layout.colors.searchBarBgColor}
+                            />
+                        </TouchableOpacity>
+                    ) : null
+                }
+            />
+        </View>
     );
 };
 
@@ -98,25 +162,15 @@ const styles = StyleSheet.create({
     },
     mediaItem: {
         position: "relative",
-        marginRight: 10,
-        borderRadius: 12,
+        marginRight: 14,
+        borderRadius: 16,
         overflow: "hidden",
     },
     thumbnail: {
-        width: 100,
-        height: 100,
-        borderRadius: 12,
+        width: 150,
+        height: 150,
+        borderRadius: 16,
         backgroundColor: "#222",
-    },
-    videoIndicator: {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "rgba(0, 0, 0, 0.3)",
     },
     durationBadge: {
         position: "absolute",
@@ -134,17 +188,24 @@ const styles = StyleSheet.create({
     },
     removeButton: {
         position: "absolute",
-        top: 4,
-        right: 4,
-        backgroundColor: "rgba(0, 0, 0, 0.6)",
+        top: 6,
+        right: 6,
+        backgroundColor: layout.colors.searchBarBgColor,
         borderRadius: 12,
+        width: 24,
+        height: 24,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#555",
     },
     addMoreButton: {
-        width: 100,
-        height: 100,
-        borderRadius: 12,
+        width: 150,
+        height: 150,
+        borderRadius: 16,
         borderWidth: 2,
-        borderColor: layout.colors.redColor,
+        marginRight: 14,
+        borderColor: layout.colors.searchBarBgColor,
         borderStyle: "dashed",
         justifyContent: "center",
         alignItems: "center",
