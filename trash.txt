@@ -1,0 +1,63 @@
+
+                    <Tab.Screen
+                        options={{
+                            headerTitle: () => (
+                                <Logo
+                            ),
+                            title: "",
+                            headerLeftContainerStyle: {
+                                marginTop: 5,
+                                paddingBottom: 10,
+                                paddingLeft: 20,
+                            },
+                            headerRightContainerStyle: {
+                                marginTop: 5,
+                                paddingBottom: 10,
+                                paddingRight: 10,
+                            },
+                            // headerLeft: () => (
+                            //     <>
+                            //         <Image
+                            //             style={{
+                            //                 width: 106,
+                            //                 height: 28,
+                            //             }}
+                            //             source={require("../../assets/icons/tailgate.png")}
+                            //         />
+                            //     </>
+                            // ),
+                            // headerRight: () => (
+                            //     <Octicons
+                            //         name="flame"
+                            //         size={TAB_BAR_ICON_SIZE}
+                            //         color={layout.colors.redColor}
+                            //         onPress={() => {
+                            //             Haptics.selectionAsync();
+                            //         }}
+                            //     />
+                            // ),
+                            tabBarIcon: ({ focused }) => (
+                                <View
+                                    style={
+                                        {
+                                            // paddingTop: 10,
+                                        }
+                                    }
+                                >
+                                    <Octicons
+                                        name="home"
+                                        size={TAB_BAR_ICON_SIZE}
+                                        color={focused ? "#fff" : "#838383"}
+                                    />
+                                </View>
+                            ),
+                        }}
+                        listeners={({ navigation }) => ({
+                            tabPress: () => {
+                                Haptics.selectionAsync();
+                                navigation.navigate("Home");
+                            },
+                        })}
+                        name="Home"
+                        component={Main}
+                    />
